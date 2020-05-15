@@ -495,6 +495,7 @@ namespace build2
 
     root.root_extra.reset (
       new scope::root_extra_type {
+        nullopt /* amalgamation */,
         a,
         a ? alt_build_ext        : std_build_ext,
         a ? alt_build_dir        : std_build_dir,
@@ -878,17 +879,20 @@ namespace build2
         const dir_path& ad (ars->out_path ());
         dir_path rd (ad.relative (out_root));
 
-        // If we already have the amalgamation variable set, verify
-        // that aroot matches its value.
+        // If we already have the amalgamation variable set, verify that aroot
+        // matches its value.
         //
         if (!rp.second)
         {
+          /* @@ TMP
           if (!v)
           {
             fail << out_root << " cannot be amalgamated" <<
               info << "amalgamated by " << ad;
           }
           else
+          */
+          if (v)
           {
             const dir_path& vd (cast<dir_path> (v));
 
@@ -910,10 +914,9 @@ namespace build2
       }
       else if (rp.second)
       {
-        // If there is no outer root and the amalgamation variable
-        // hasn't been set, then we need to check if any of the
-        // outer directories is a project's out_root. If so, then
-        // that's our amalgamation.
+        // If there is no outer root and the amalgamation variable hasn't been
+        // set, then we need to check if any of the outer directories is a
+        // project's out_root. If so, then that's our amalgamation.
         //
         optional<bool> altn;
         const dir_path& ad (find_out_root (out_root.directory (), altn).first);
@@ -924,7 +927,18 @@ namespace build2
           l5 ([&]{trace << out_root << " amalgamated as " << rd;});
           v = move (rd);
         }
+        //@@ else: the value will be NULL and amalgamation will be disabled.
+        //         We could omit setting it in root_extra... But maybe this is
+        //         correct: we don't want to load half of the project as
+        //         amalgamated and the other half as not, would we now?
+
       }
+      // @@ else if (v): shouldn't we try to bootstrap a project in the
+      //                 user-specified directory? Though this case is not
+      //                 used outside of some controlled cases (like module
+      //                 sidebuilds).
+
+      rs.root_extra->amalgamation = cast_null<dir_path> (v);
     }
 
     // See if we have any subprojects. In a sense, this is the other
@@ -1199,6 +1213,8 @@ namespace build2
 
     // Check if we are strongly amalgamated by this outer root scope.
     //
+    // Note that we won't end up here if we are not amalgamatable.
+    //
     if (root.src_path ().sub (rs.src_path ()))
       root.strong_ = rs.strong_scope (); // Itself or some outer scope.
   }
@@ -1249,10 +1265,17 @@ namespace build2
             rs.assign (ctx.var_forwarded) = true; // Only upgrade (see main()).
         }
 
+        //@@ TODO: what if subproject has amalgamation disabled? Can we have a
+        //         subproject that disables our attempt to amalgamate it (see
+        //         amalgamatable() call below).
+
         // Check if we strongly amalgamated this inner root scope.
         //
-        if (rs.src_path ().sub (root.src_path ()))
-          rs.strong_ = root.strong_scope (); // Itself or some outer scope.
+        if (rs.amalgamatable ())
+        {
+          if (rs.src_path ().sub (root.src_path ()))
+            rs.strong_ = root.strong_scope (); // Itself or some outer scope.
+        }
 
         // See if there are more inner roots.
         //
