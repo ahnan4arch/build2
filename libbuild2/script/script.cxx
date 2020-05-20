@@ -34,17 +34,54 @@ namespace build2
     void
     dump (ostream& os, const string& ind, const lines& ls)
     {
+      string if_ind;
+
       for (const line& l: ls)
       {
-        os << ind;
+        // Decrease indentation when el* or end line is reached.
+        //
+        switch (l.type)
+        {
+        case line_type::cmd_elif:
+        case line_type::cmd_elifn:
+        case line_type::cmd_else:
+        case line_type::cmd_end:
+          {
+            size_t n (if_ind.size ());
+            assert (n >= 2);
+            if_ind.resize (n - 2);
+            break;
+          }
+        default: break;
+        }
 
-        // @@ Should be across lines?
+        // Print indentations.
+        //
+        os << ind << if_ind;
+
+        // Increase indentation for the new if/else branch.
+        //
+        switch (l.type)
+        {
+        case line_type::cmd_if:
+        case line_type::cmd_ifn:
+        case line_type::cmd_elif:
+        case line_type::cmd_elifn:
+        case line_type::cmd_else:  if_ind += "  "; break;
+        default: break;
+        }
+
+        // @@
         //
         // We will consider mixed quoting as a double quoting since the
         // information is lost and we won't be able to restore the token
         // original representation.
         //
-        char qseq ('\0'); // Can be used as bool.
+
+        // If it is '"' or '\'' then we inside the quoted token sequence,
+        // otherwise it is '\0' and thus can be used as bool.
+        //
+        char qseq ('\0');
 
         for (const replay_token& rt: l.tokens)
         {
@@ -62,7 +99,7 @@ namespace build2
               return t.qtype == quote_type::single ? '\'' : '"';
             };
 
-            if (t.qcomp) // Complete quoting.
+            if (t.qcomp) // Complete token quoting.
             {
               // If we are inside quoted token sequence then we do noting.
               // Otherwise we just quote the current token not starting a
@@ -74,7 +111,7 @@ namespace build2
                 rq = lq;
               }
             }
-            else         // Partial quoting.
+            else         // Partial token quoting.
             {
               // Note that we can not always reproduce the original tokens
               // representation for partial quoting. For example, the
@@ -83,6 +120,12 @@ namespace build2
               //
               // "foo
               // f"oo"
+              //
+              // We will always assume that the partially quoted token either
+              // starts or ends the quoted token sequence. Sometimes this ends
+              // up unexpectedly, but seems there is not much we can do:
+              //
+              // f"oo" "ba"r  ->  "foo bar"
               //
               if (!qseq)
               {
@@ -97,19 +140,38 @@ namespace build2
             }
           }
 
+          // If we reached the newline token being inside the quoted token
+          // sequence, then we probably made a mistake mistreating the
+          // previous partially quoted token, for example f"oo" as "foo. Now,
+          // all we can do is to add the trailing quote to make the line
+          // syntactically correct.
+          //
+          if (t.type == token_type::newline && qseq)
+            os << qseq;
+
           // @@ Add 2 spaces indentation for if block contents.
 
           if (t.separated                   &&
               t.type != token_type::newline &&
-              &rt != &l.tokens[0])             // Not first in the line.
+              &rt != &l.tokens[0])             // Not the first in the line.
             os << ' ';
 
           if (lq) os << lq;
-          t.printer (os, t, print_mode::raw);
-          if (rq) os << rq;
 
-//          prev_qcomp = t.qcomp;
-//          prev_qtype = t.qtype;
+          if (t.type == token_type::word && t.qtype != quote_type::single)
+          {
+            for (char c: t.value)
+            {
+              if (c == '"' || c == '\\')
+                os << '\\';
+
+              os << c;
+            }
+          }
+          else
+            t.printer (os, t, print_mode::raw);
+
+          if (rq) os << rq;
         }
       }
     }

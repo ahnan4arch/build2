@@ -3,46 +3,62 @@
 
 test.options += -d
 
-#\
 : if-else
 :
-$* <<EOI >|
+$* <<EOF >>EOF
   if foo
     bar
   elif fox
-    baz
+    if fix
+      baz
+    end
+    biz
   end
   if! foo
     bar
   elif! fox
     baz
   end
-  EOI
+  EOF
 
 : command
 :
-$* <<EOI >|
+$* <<EOF >>EOF
   foo >| 2>- &a &?b
   foo >=c 2>~/error:.*/ &!c
-  foo >>:/~%EOF%
+  foo >>:/~%EOS%
   %.*
   abc
   %xyz.*%
+  EOS
   EOF
-  EOI
 
 : quoting
 :
-$* <<EOI >|
+$* <<EOF >>EOF
   foo 'bar' "baz" '' ""
+  EOF
+
+: partial-quoting
+:
+$* <<EOI >>EOO
+  "$foo"
+  "foo$"
+  "fo"o
+  "foo"\"
+  "foo\\"
+  fo\"o
+  fo\\o
+  'fo\"o'
+  f"oo" "ba"r
   EOI
-#\
-
-#\
-  libbuild2/lexer+quoting.test.testscript
-
-  : tmp
-  :
-    $* <'f"oo" "foo$"'
-
-#\
+  "$foo"
+  "foo$"
+  "foo"
+  "foo\""
+  "foo\\"
+  fo\"o
+  fo\\o
+  'fo\"o'
+  "foo bar"
+  EOO

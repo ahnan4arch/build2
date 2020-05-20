@@ -48,6 +48,8 @@ namespace build2
     //
     using lines = small_vector<line, 1>;
 
+    // @@
+    //
     LIBBUILD2_SYMEXPORT void
     dump (ostream&, const string& ind, const lines&);
 
