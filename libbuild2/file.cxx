@@ -569,15 +569,29 @@ namespace build2
   }
 
   pair<value, bool>
-  extract_variable (context& ctx, lexer& l, const variable& var)
+  extract_variable (context& ctx, lexer& l, const variable& var, size_t n)
   {
     const path_name& fn (l.name ());
 
     try
     {
       token t (l.next ());
-      token_type tt;
 
+      // Skip the requested number of lines.
+      //
+      while (--n != 0)
+      {
+        for (; t.type != token_type::eos; t = l.next ())
+        {
+          if (t.type == token_type::newline)
+          {
+            t = l.next ();
+            break;
+          }
+        }
+      }
+
+      token_type tt;
       if (t.type != token_type::word || t.value != var.name ||
           ((tt = l.next ().type) != token_type::assign &&
            tt != token_type::prepend &&
@@ -605,22 +619,23 @@ namespace build2
 
   pair<value, bool>
   extract_variable (context& ctx,
-                    istream& is,
-                    const path& bf,
-                    const variable& var)
+                    istream& is, const path& bf,
+                    const variable& var, size_t n)
   {
     path_name in (bf);
     lexer l (is, in);
-    return extract_variable (ctx, l, var);
+    return extract_variable (ctx, l, var, n);
   }
 
   pair<value, bool>
-  extract_variable (context& ctx, const path& bf, const variable& var)
+  extract_variable (context& ctx,
+                    const path& bf,
+                    const variable& var, size_t n)
   {
     try
     {
       ifdstream ifs (bf);
-      return extract_variable (ctx, ifs, bf, var);
+      return extract_variable (ctx, ifs, bf, var, n);
     }
     catch (const io_error& e)
     {
@@ -717,8 +732,8 @@ namespace build2
       auto p (extract_variable (ctx, f, *ctx.var_project));
 
       if (!p.second)
-        fail << "variable " << ctx.var_project->name << " expected "
-             << "as a first line in " << f;
+        fail << "variable " << *ctx.var_project << " expected as a first "
+             << "line in " << f;
 
       name = cast<project_name> (move (p.first));
     }
@@ -819,44 +834,68 @@ namespace build2
 
     context& ctx (rs.ctx);
 
-    bool r (false);
-
     const dir_path& out_root (rs.out_path ());
     const dir_path& src_root (rs.src_path ());
 
+    path bf (exists (src_root, std_bootstrap_file, alt_bootstrap_file, altn));
+
+    if (rs.root_extra == nullptr)
     {
-      path f (exists (src_root, std_bootstrap_file, alt_bootstrap_file, altn));
+      // If nothing so far has indicated the naming, assume standard.
+      //
+      if (!altn)
+        altn = false;
 
-      if (rs.root_extra == nullptr)
-      {
-        // If nothing so far has indicated the naming, assume standard.
-        //
-        if (!altn)
-          altn = false;
-
-        setup_root_extra (rs, altn);
-      }
-
-      if (!f.empty ())
-      {
-        // We assume that bootstrap out cannot load this file explicitly. It
-        // feels wrong to allow this since that makes the whole bootstrap
-        // process hard to reason about. But we may try to bootstrap the same
-        // root scope multiple time.
-        //
-        if (rs.buildfiles.insert (f).second)
-        {
-          parser p (rs.ctx, load_stage::boot);
-          source (p, rs, rs, f);
-        }
-        else
-          l5 ([&]{trace << "skipping already sourced " << f;});
-
-        r = true;
-      }
+      setup_root_extra (rs, altn);
     }
 
-    // See if we are a part of an amalgamation. There are two key players: the
+    bool r (true);
+    if (bf.empty ())
+    {
+      r = false;
+    }
+    // We assume that bootstrap out cannot load this file explicitly. It
+    // feels wrong to allow this since that makes the whole bootstrap
+    // process hard to reason about. But we may try to bootstrap the same
+    // root scope multiple time.
+    //
+    else if (rs.buildfiles.insert (bf).second)
+    {
+      // Deal with the empty amalgamation variable (which indicates that
+      // amalgamating this project is disabled). We go through all this
+      // trouble of extracting its value manually (and thus requiring its
+      // assignment, if any, to be the second line in bootstrap.build, after
+      // project assignment) in order to have the logical amalgamation view
+      // during bootstrap (note that the bootstrap pre hooks will still see
+      // physical amalgamation).
+      //
+      auto ap (extract_variable (ctx, bf, *ctx.var_amalgamation, 2));
+
+      if (ap.second && (ap.first.null || ap.first.empty ()))
+        rs.root_extra->amalgamation = nullptr;
+
+      {
+        parser p (rs.ctx, load_stage::boot);
+        source (p, rs, rs, bf);
+      }
+
+      // Detect and diagnose the case where the amalgamation variable is not
+      // the second line.
+      //
+      if (!ap.second && rs.vars[ctx.var_amalgamation].defined ())
+      {
+        fail << "variable " << *ctx.var_amalgamation << " expected as a "
+             << "second line in " << bf;
+      }
+    }
+    else
+    {
+      // Here we assume amalgamation has been dealt with.
+      //
+      l5 ([&]{trace << "skipping already sourced " << bf;});
+    }
+
+    // Finish dealing with the amalgamation. There are two key players: the
     // outer root scope which may already be present (i.e., we were loaded as
     // part of an amalgamation) and the amalgamation variable that may or may
     // not be set by the user (in bootstrap.build) or by an earlier call to
