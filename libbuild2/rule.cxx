@@ -511,28 +511,35 @@ namespace build2
       if (dd.expect (checksum) != nullptr)
         l4 ([&]{trace << "recipe text change forcing update of " << t;});
 
+      // For each variable hash its name, undefined/null/non-null indication,
+      // and the value if non-null.
+      //
       {
         sha256 cs;
         names storage;
 
-        // @@ TODO: for each var hash:
-        //   - its name
-        //   - byte indicating undefined|null|non-null
-        //   - its value if non-null
-        //
-        /*
-        for (each var)
+        for (const string& n: script.vars)
         {
-          if (non-null)
+          cs.append (n);
+
+          const value* v (nullptr);
+
+          if (const variable* pvar = ctx.var_pool.find (n))
+            v = xt[*pvar].value;
+
+          cs.append (v == nullptr ? '\x1' : // Undefined variable.
+                     v->null      ? '\x2' : // NULL variable.
+                                    '\x3'); // Variable contains some value.
+
+          if (v != nullptr && !v->null)
           {
             storage.clear ();
-            names_view ns (reverse (v, storage));
+            names_view ns (reverse (*v, storage));
 
-            for (n: ns)
+            for (const name& n: ns)
               to_checksum (cs, n);
           }
         }
-        */
 
         //@@ TODO (later): hash special variables values (targets,
         //                 prerequisites).

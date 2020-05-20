@@ -16,6 +16,12 @@ namespace build2
     {
       using type = token_type;
 
+      static inline bool
+      special_variable (const string& name)
+      {
+        return name == ">";
+      }
+
       //
       // Pre-parse.
       //
@@ -98,7 +104,7 @@ namespace build2
             // Check if we are trying to modify any of the special variables
             // ($>).
             //
-            if (t.value == ">")
+            if (special_variable (t.value))
               fail (t) << "attempt to set '" << t.value << "' variable";
 
             // We don't pre-enter variables.
@@ -327,15 +333,21 @@ namespace build2
       lookup parser::
       lookup_variable (name&& qual, string&& name, const location& loc)
       {
+        // In the pre-parse mode collect the referenced variable names for the
+        // script semantics change tracking (see
+        // adhoc_script_rule::perform_update_file() for details).
+        //
         if (pre_parse_)
         {
-          if (!name.empty ())
-          {
-            // @@ TODO: filter out special var names.
-            // @@ TODO: suppress duplicates.
-            //
+          // Add the variable name skipping the special variables and
+          // suppressing duplicates.
+          //
+          small_vector<string, 1>& vars (script_->vars);
+
+          if (!name.empty ()           &&
+              !special_variable (name) &&
+              find (vars.begin (), vars.end (), name) == vars.end ())
             vars.push_back (move (name));
-          }
 
           return lookup ();
         }
@@ -343,7 +355,21 @@ namespace build2
         if (!qual.empty ())
           fail (loc) << "qualified variable name";
 
-        return environment_->lookup (name);
+        // Fail for non-script-local variables with computed names, since they
+        // are invisible for the script semantics change tracking (see above).
+        //
+        lookup r (environment_->lookup (name));
+
+        if (r.defined () && !r.belongs (*environment_))
+        {
+          const small_vector<string, 1>& vars (script_->vars);
+
+          if (find (vars.begin (), vars.end (), name) == vars.end ())
+            fail(loc) << "use of undeclared non-script-local variable with "
+                      << "computed name '" << name << "'";
+        }
+
+        return r;
       }
     }
   }

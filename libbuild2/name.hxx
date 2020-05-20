@@ -119,7 +119,7 @@ namespace build2
   {
     if (n.proj)
       cs.append (n.proj->string ());
-    cs.append (n.dir);
+    cs.append (n.dir.string ());
     cs.append (n.type);
     cs.append (n.value);
     cs.append (n.pair);
