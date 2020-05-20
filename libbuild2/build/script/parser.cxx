@@ -328,7 +328,17 @@ namespace build2
       lookup_variable (name&& qual, string&& name, const location& loc)
       {
         if (pre_parse_)
+        {
+          if (!name.empty ())
+          {
+            // @@ TODO: filter out special var names.
+            // @@ TODO: suppress duplicates.
+            //
+            vars.push_back (move (name));
+          }
+
           return lookup ();
+        }
 
         if (!qual.empty ())
           fail (loc) << "qualified variable name";

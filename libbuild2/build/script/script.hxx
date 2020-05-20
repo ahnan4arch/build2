@@ -40,7 +40,8 @@ namespace build2
         // Note that the variables are not pre-entered into a pool during the
         // parsing phase, so the line variable pointers are NULL.
         //
-        build2::script::lines lines;
+        build2::script::lines   lines;
+        small_vector<string, 1> vars; // Referenced variables.
 
         location start_loc;
         location end_loc;
