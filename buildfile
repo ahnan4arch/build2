@@ -1,7 +1,7 @@
 # file      : buildfile
 # license   : MIT; see accompanying LICENSE file
 
-./: {*/ -build/ -config/ -old-tests/}                    \
+./: {*/ -build/ -config/ -old-tests/ -doc/}                    \
     doc{INSTALL LICENSE AUTHORS NEWS README}             \
     file{INSTALL.cli bootstrap* config.guess config.sub} \
     manifest
